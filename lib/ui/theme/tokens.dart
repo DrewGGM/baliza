@@ -19,12 +19,27 @@ import 'package:flutter/widgets.dart';
 /// - **60 %** [base] y [surface]: el fondo, que casi siempre es lo que se ve.
 /// - **30 %** [textPrimary] y [textSecondary]: el contenido.
 /// - **10 %** un único acento por contexto: [amber] cuando se busca a alguien,
-///   [danger] cuando se está emitiendo auxilio. Nunca los dos a la vez.
+///   [danger] cuando hay algo que puede costar una vida.
 ///
-/// [danger] está reservado en exclusiva al estado "emitiendo SOS". No se usa
-/// para errores, ni para botones de borrar, ni para avisos. Si el rojo apareciera
-/// en cualquier otro sitio dejaría de significar lo único que tiene que
-/// significar.
+/// ## La regla del rojo
+///
+/// [danger] significa **una sola cosa**: "esto puede costar una vida ahora
+/// mismo". Sólo tres situaciones lo merecen:
+///
+/// 1. La baliza está emitiendo auxilio.
+/// 2. Una alergia que condiciona la medicación en campo.
+/// 3. Una condición médica que puede descompensarse bajo aplastamiento.
+///
+/// Todo lo demás usa otro color, sin excepción: los errores de la app, los
+/// avisos de batería y de permisos usan [warning]; las acciones destructivas de
+/// la interfaz, ninguno.
+///
+/// El motivo es que las tres situaciones anteriores nunca compiten en la misma
+/// pantalla —la emisión propia vive en la pestaña de auxilio y los datos
+/// médicos ajenos en la de rescate—, así que en cualquier momento dado el rojo
+/// que se ve tiene un único significado posible. En cuanto el rojo se usara
+/// para un error de red o un botón de borrar, dejaría de leerse como peligro y
+/// pasaría a leerse como decoración.
 abstract final class BalizaColors {
   // -- Base ------------------------------------------------------------------
   static const base = Color(0xFF0A0E13);

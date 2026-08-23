@@ -262,11 +262,20 @@ y arruina la visión nocturna de quien busca.
 </details>
 
 <details>
-<summary><b>El rojo está reservado a una sola cosa</b></summary>
+<summary><b>El rojo significa una sola cosa: puede costar una vida</b></summary>
 
-`danger` se usa **exclusivamente** para el estado «emitiendo auxilio». No para
-errores, ni para botones de borrar, ni para advertencias. Si el rojo apareciera
-en cualquier otro sitio dejaría de significar lo único que tiene que significar.
+Sólo tres situaciones lo merecen: la baliza emitiendo auxilio, una alergia que
+condiciona la medicación en campo, y una condición médica que puede
+descompensarse bajo aplastamiento.
+
+Nada más. Los errores de la app, los avisos de batería y los de permisos usan
+ámbar; las acciones destructivas de la interfaz, ningún color de alarma.
+
+Funciona porque esas tres situaciones nunca compiten en la misma pantalla —la
+emisión propia vive en la pestaña *Auxilio* y los datos médicos ajenos en
+*Buscar*—, así que en cualquier momento el rojo que se ve tiene un único
+significado posible. En cuanto se usara para un error de red o un botón de
+borrar, dejaría de leerse como peligro y pasaría a leerse como decoración.
 </details>
 
 <details>
