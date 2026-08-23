@@ -19,6 +19,26 @@ mediante Bluetooth de baja energía. Sin internet, sin cobertura celular y sin G
 
 ---
 
+## La app
+
+<div align="center">
+
+| Pedir ayuda | Emitiendo | Detección de sismo |
+|:---:|:---:|:---:|
+| <img src="docs/capturas/01-auxilio.png" width="240" /> | <img src="docs/capturas/02-emitiendo.png" width="240" /> | <img src="docs/capturas/03-deteccion.png" width="240" /> |
+| Un toque y empiezas a emitir. Detener exige mantener pulsado. | El rojo aparece **sólo** aquí. Cronómetro, código y batería. | Dos minutos para responder. El silencio se lee como emergencia. |
+
+| Buscar personas | Detalle | Bienvenida |
+|:---:|:---:|:---:|
+| <img src="docs/capturas/04-rescate.png" width="240" /> | <img src="docs/capturas/05-detalle.png" width="240" /> | <img src="docs/capturas/06-bienvenida.png" width="240" /> |
+| Ordenadas por prioridad, con tendencia de acercamiento. | Ficha médica, situación y confianza de la medición. | Se explica cada permiso antes de pedirlo. |
+
+</div>
+
+> Capturas tomadas en emulador Android con el **modo simulación** activo.
+
+---
+
 ## El problema
 
 El **10 de agosto de 2026**, un sismo de magnitud **7,4** con epicentro cerca de
