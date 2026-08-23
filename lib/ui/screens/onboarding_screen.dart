@@ -2,10 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../domain/ports/device_services.dart';
 import '../app.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
+import 'permissions_screen.dart';
 
 /// Introducción y solicitud de permisos.
 ///
@@ -26,8 +26,6 @@ class OnboardingScreen extends StatefulWidget {
 class _OnboardingScreenState extends State<OnboardingScreen> {
   final PageController _pages = PageController();
   int _index = 0;
-  final Set<AppPermission> _granted = <AppPermission>{};
-  bool _requesting = false;
 
   static const _slides = <_Slide>[
     _Slide(
@@ -67,29 +65,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     super.dispose();
   }
 
-  Future<void> _requestAll() async {
-    setState(() => _requesting = true);
-    final permissions = RuntimeScope.of(context).permissions;
-
-    for (final p in <AppPermission>[
-      AppPermission.bluetooth,
-      AppPermission.location,
-      AppPermission.notifications,
-    ]) {
-      final ok = await permissions.request(p);
-      if (ok) _granted.add(p);
-    }
-
-    // La exención de optimización de batería se pide al final y por separado:
-    // abre una pantalla del sistema, y encadenarla con los demás diálogos
-    // haría que la persona la descartara sin leerla.
-    if (mounted) {
-      await RuntimeScope.of(context).keepAlive.requestPermissions();
-    }
-
-    if (mounted) setState(() => _requesting = false);
-  }
-
   Future<void> _finish() async {
     await RuntimeScope.of(context).settings.setOnboarded(true);
   }
@@ -108,11 +83,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 onPageChanged: (i) => setState(() => _index = i),
                 children: <Widget>[
                   ..._slides.map((s) => _SlideView(slide: s)),
-                  _PermissionsPage(
-                    granted: _granted,
-                    requesting: _requesting,
-                    onRequest: _requestAll,
-                  ),
+                  const PermissionsScreen(embedded: true),
                 ],
               ),
             ),
@@ -222,104 +193,6 @@ class _SlideView extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _PermissionsPage extends StatelessWidget {
-  const _PermissionsPage({
-    required this.granted,
-    required this.requesting,
-    required this.onRequest,
-  });
-
-  final Set<AppPermission> granted;
-  final bool requesting;
-  final Future<void> Function() onRequest;
-
-  static const _explanations = <AppPermission, String>{
-    AppPermission.bluetooth:
-        'Es el canal por el que emites y detectas. Sin esto la app no puede '
-            'hacer nada.',
-    AppPermission.location:
-        'Android lo exige para buscar por Bluetooth. Baliza no usa tu GPS ni '
-            'guarda dónde estás.',
-    AppPermission.notifications:
-        'Para poder preguntarte si estás bien y que respondas sin desbloquear '
-            'el teléfono.',
-    AppPermission.batteryOptimization:
-        'Para que la baliza siga emitiendo con la pantalla apagada. Sin esto, '
-            'el sistema apaga la app a los pocos minutos.',
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.symmetric(
-        horizontal: Space.xl,
-        vertical: Space.xl,
-      ),
-      children: <Widget>[
-        Text('Permisos', style: BalizaText.display),
-        const SizedBox(height: Space.sm),
-        Text(
-          'Baliza necesita tres cosas. Te explicamos para qué sirve cada una.',
-          style: BalizaText.body.copyWith(color: BalizaColors.textSecondary),
-        ),
-        const SizedBox(height: Space.xl),
-        ..._explanations.entries.map((entry) {
-          final ok = granted.contains(entry.key);
-          return Padding(
-            padding: const EdgeInsets.only(bottom: Space.md),
-            child: BalizaCard(
-              padding: const EdgeInsets.all(Space.lg),
-              borderColor:
-                  ok ? BalizaColors.safe.withValues(alpha: 0.4) : null,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Icon(
-                    ok ? Icons.check_circle : Icons.radio_button_unchecked,
-                    color:
-                        ok ? BalizaColors.safe : BalizaColors.textTertiary,
-                    size: 22,
-                  ),
-                  const SizedBox(width: Space.md),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(entry.key.label, style: BalizaText.bodyStrong),
-                        const SizedBox(height: Space.xs),
-                        Text(entry.value, style: BalizaText.caption),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }),
-        const SizedBox(height: Space.lg),
-        FilledButton.icon(
-          onPressed: requesting ? null : () => unawaited(onRequest()),
-          icon: requesting
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.lock_open),
-          label: Text(requesting ? 'Solicitando…' : 'Conceder permisos'),
-        ),
-        const SizedBox(height: Space.md),
-        Text(
-          'Puedes empezar sin concederlos y hacerlo más tarde, pero la app no '
-          'podrá emitir ni detectar hasta que lo hagas.',
-          style: BalizaText.caption,
-          textAlign: TextAlign.center,
-        ),
-      ],
     );
   }
 }

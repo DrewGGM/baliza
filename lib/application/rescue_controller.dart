@@ -110,6 +110,9 @@ class RescueController extends ChangeNotifier {
       await _keepAlive.start(
         title: 'Buscando personas',
         body: 'Escuchando balizas cercanas.',
+        buttons: const <KeepAliveButton>[
+          KeepAliveButton(id: KeepAliveCommand.stopScan, text: 'Detener'),
+        ],
       );
     } catch (_) {
       // Sin servicio la búsqueda funciona igual mientras la app esté visible.

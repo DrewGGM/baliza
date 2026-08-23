@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:battery_plus/battery_plus.dart';
@@ -224,58 +225,122 @@ class PrefsSettingsStore implements SettingsStore {
   Future<void> remove(String key) async => _prefs.remove(key);
 }
 
-/// Permisos del sistema.
+/// Permisos del sistema, sobre `permission_handler`.
+///
+/// ## Por qué un permiso puede no aplicar
+///
+/// El juego de permisos de Bluetooth cambió en Android 12, y el de ubicación
+/// dejó de hacer falta en esa misma versión. En iOS la mitad de estos permisos
+/// sencillamente no existen.
+///
+/// Por eso [PermissionState] distingue `unavailable` de `denied`: un permiso
+/// que la plataforma no tiene **no** debe pintarse en rojo ni bloquear el
+/// arranque. Confundir "no aplica" con "denegado" haría que la app pareciera
+/// rota en la mitad de los teléfonos.
 class SystemPermissions implements PermissionService {
   const SystemPermissions();
 
+  /// Permisos nativos que respaldan cada permiso de la app.
+  ///
+  /// Una lista vacía significa "no aplica en esta plataforma".
   List<ph.Permission> _mapped(AppPermission permission) {
+    if (!Platform.isAndroid && !Platform.isIOS) return const <ph.Permission>[];
+
     return switch (permission) {
-      AppPermission.bluetooth => <ph.Permission>[
-          ph.Permission.bluetoothScan,
-          ph.Permission.bluetoothAdvertise,
-          ph.Permission.bluetoothConnect,
-        ],
-      AppPermission.location => <ph.Permission>[ph.Permission.locationWhenInUse],
+      AppPermission.bluetooth => Platform.isAndroid
+          ? <ph.Permission>[
+              ph.Permission.bluetoothScan,
+              ph.Permission.bluetoothAdvertise,
+              ph.Permission.bluetoothConnect,
+            ]
+          // En iOS el permiso es uno solo y lo gestiona CoreBluetooth.
+          : <ph.Permission>[ph.Permission.bluetooth],
+
+      // Sólo aplica en Android. Desde la versión 12 el escaneo se declara con
+      // `neverForLocation` y el permiso de ubicación deja de ser necesario.
+      AppPermission.location => Platform.isAndroid
+          ? <ph.Permission>[ph.Permission.locationWhenInUse]
+          : const <ph.Permission>[],
+
       AppPermission.notifications => <ph.Permission>[ph.Permission.notification],
-      AppPermission.batteryOptimization => <ph.Permission>[
-          ph.Permission.ignoreBatteryOptimizations,
-        ],
+
+      // Concepto exclusivo de Android. En iOS lo resuelven los modos de
+      // segundo plano declarados en el Info.plist.
+      AppPermission.batteryOptimization => Platform.isAndroid
+          ? <ph.Permission>[ph.Permission.ignoreBatteryOptimizations]
+          : const <ph.Permission>[],
     };
   }
 
+  /// Traduce el estado nativo al del dominio.
+  PermissionState _translate(ph.PermissionStatus status) {
+    if (status.isGranted || status.isLimited || status.isProvisional) {
+      return PermissionState.granted;
+    }
+    if (status.isPermanentlyDenied) return PermissionState.permanentlyDenied;
+    if (status.isRestricted) return PermissionState.permanentlyDenied;
+    return PermissionState.denied;
+  }
+
+  /// Combina varios permisos nativos en uno solo del dominio.
+  ///
+  /// Se queda con el estado **peor**: si alguno falta, el conjunto no está
+  /// concedido. Anunciar "Bluetooth listo" cuando falta el permiso de anuncio
+  /// sería mentir sobre algo que sólo se descubriría al pulsar SOS.
+  PermissionState _worst(Iterable<PermissionState> states) {
+    if (states.isEmpty) return PermissionState.unavailable;
+    if (states.every((s) => s == PermissionState.unavailable)) {
+      return PermissionState.unavailable;
+    }
+    if (states.any((s) => s == PermissionState.permanentlyDenied)) {
+      return PermissionState.permanentlyDenied;
+    }
+    if (states.any((s) => s == PermissionState.denied)) {
+      return PermissionState.denied;
+    }
+    return PermissionState.granted;
+  }
+
   @override
-  Future<bool> isGranted(AppPermission permission) async {
-    for (final p in _mapped(permission)) {
-      final status = await p.status;
-      // Un permiso no soportado por la plataforma no bloquea: en iOS varios de
-      // los de Android sencillamente no existen.
-      if (status.isPermanentlyDenied || status.isDenied) {
-        if (await p.shouldShowRequestRationale || status.isPermanentlyDenied) {
-          return false;
-        }
-        return false;
+  Future<PermissionState> check(AppPermission permission) async {
+    final natives = _mapped(permission);
+    if (natives.isEmpty) return PermissionState.unavailable;
+
+    final states = <PermissionState>[];
+    for (final p in natives) {
+      try {
+        states.add(_translate(await p.status));
+      } catch (e) {
+        // Un permiso que la versión del sistema no reconoce no debe contar
+        // como denegado.
+        debugPrint('[SystemPermissions] $p no consultable: $e');
+        states.add(PermissionState.unavailable);
       }
     }
-    return true;
+    return _worst(states);
   }
 
   @override
-  Future<bool> request(AppPermission permission) async {
-    final results = await _mapped(permission).request();
-    return results.values.every((s) => s.isGranted || s.isLimited);
-  }
+  Future<PermissionState> request(AppPermission permission) async {
+    final natives = _mapped(permission);
+    if (natives.isEmpty) return PermissionState.unavailable;
 
-  @override
-  Future<List<AppPermission>> missingCritical() async {
-    final missing = <AppPermission>[];
-    for (final p in <AppPermission>[
-      AppPermission.bluetooth,
-      AppPermission.location,
-      AppPermission.notifications,
-    ]) {
-      if (!await isGranted(p)) missing.add(p);
+    try {
+      final results = await natives.request();
+      return _worst(results.values.map(_translate));
+    } catch (e) {
+      debugPrint('[SystemPermissions] fallo al solicitar $permission: $e');
+      return PermissionState.denied;
     }
-    return missing;
+  }
+
+  @override
+  Future<Map<AppPermission, PermissionState>> checkAll() async {
+    final result = <AppPermission, PermissionState>{};
+    for (final p in AppPermission.values) {
+      result[p] = await check(p);
+    }
+    return result;
   }
 
   @override
@@ -284,18 +349,23 @@ class SystemPermissions implements PermissionService {
   }
 }
 
-/// Implementación nula de permisos, para el modo simulación y el escritorio.
+/// Implementación permisiva, para simulación y escritorio.
 class AlwaysGrantedPermissions implements PermissionService {
   const AlwaysGrantedPermissions();
 
   @override
-  Future<bool> isGranted(AppPermission permission) async => true;
+  Future<PermissionState> check(AppPermission permission) async =>
+      PermissionState.granted;
 
   @override
-  Future<bool> request(AppPermission permission) async => true;
+  Future<PermissionState> request(AppPermission permission) async =>
+      PermissionState.granted;
 
   @override
-  Future<List<AppPermission>> missingCritical() async => const [];
+  Future<Map<AppPermission, PermissionState>> checkAll() async => <
+      AppPermission, PermissionState>{
+    for (final p in AppPermission.values) p: PermissionState.granted,
+  };
 
   @override
   Future<void> openSystemSettings() async {}

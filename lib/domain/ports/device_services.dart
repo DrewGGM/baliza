@@ -96,26 +96,105 @@ abstract interface class SettingsStore {
 }
 
 /// Permisos del sistema que la app necesita.
+///
+/// Cada uno lleva no sólo su nombre, sino **para qué sirve** y **qué se pierde
+/// si se deniega**. Esos dos textos se muestran juntos antes de pedirlo: una
+/// persona que entiende la consecuencia concreta decide mejor que una a la que
+/// se le suelta el diálogo del sistema sin contexto.
 enum AppPermission {
-  bluetooth('Bluetooth', 'Para emitir y detectar balizas sin red'),
-  location('Ubicación', 'Android exige este permiso para buscar por Bluetooth'),
-  notifications('Notificaciones', 'Para avisarte si detectamos un sismo'),
-  batteryOptimization(
-      'Ejecución en segundo plano', 'Para no dejar de emitir con la pantalla apagada');
+  bluetooth(
+    label: 'Bluetooth',
+    purpose: 'Es el canal por el que tu teléfono emite la señal de auxilio y '
+        'detecta a quien pide ayuda cerca.',
+    ifDenied: 'Sin este permiso la app no puede hacer nada: ni emitir ni '
+        'buscar.',
+    essential: true,
+  ),
 
-  const AppPermission(this.label, this.rationale);
+  location(
+    label: 'Ubicación',
+    purpose: 'Android hasta la versión 11 exige este permiso para poder buscar '
+        'dispositivos por Bluetooth.',
+    ifDenied: 'En teléfonos con Android 11 o anterior no podrás detectar a '
+        'nadie. Baliza no lee tu GPS ni guarda dónde estás.',
+    essential: true,
+  ),
+
+  notifications(
+    label: 'Notificaciones',
+    purpose: 'Para preguntarte "¿estás bien?" tras un sismo y para mostrar el '
+        'aviso desde el que puedes detener la emisión sin desbloquear.',
+    ifDenied: 'No verás la pregunta tras un sismo y tendrás que abrir la app '
+        'para detener la señal.',
+    essential: false,
+  ),
+
+  batteryOptimization(
+    label: 'Ejecución en segundo plano',
+    purpose: 'Para que la baliza siga emitiendo cuando la pantalla se apaga.',
+    ifDenied: 'El sistema puede detener la emisión a los pocos minutos de '
+        'bloquear el teléfono, justo cuando más falta hace.',
+    essential: false,
+  );
+
+  const AppPermission({
+    required this.label,
+    required this.purpose,
+    required this.ifDenied,
+    required this.essential,
+  });
+
   final String label;
-  final String rationale;
+
+  /// Para qué se usa, en una frase.
+  final String purpose;
+
+  /// Qué deja de funcionar si se deniega.
+  final String ifDenied;
+
+  /// `true` si la app queda inservible sin él.
+  final bool essential;
+}
+
+/// Estado de un permiso.
+enum PermissionState {
+  /// Concedido.
+  granted,
+
+  /// Denegado, pero se puede volver a pedir.
+  denied,
+
+  /// Denegado de forma permanente: sólo se resuelve en los ajustes del
+  /// sistema. Pedirlo otra vez no muestra ningún diálogo.
+  permanentlyDenied,
+
+  /// La plataforma no tiene este permiso. En iOS varios de los de Android
+  /// sencillamente no existen, y ausencia no debe leerse como denegación.
+  unavailable;
+
+  bool get isGranted => this == PermissionState.granted;
+
+  /// `true` si conviene ofrecer un atajo a los ajustes del sistema en vez de
+  /// volver a pedirlo.
+  bool get needsSystemSettings => this == PermissionState.permanentlyDenied;
+
+  /// `true` si el permiso no impide funcionar, sea porque está concedido o
+  /// porque no aplica en esta plataforma.
+  bool get isSatisfied =>
+      this == PermissionState.granted || this == PermissionState.unavailable;
 }
 
 /// Consulta y solicitud de permisos.
 abstract interface class PermissionService {
-  Future<bool> isGranted(AppPermission permission);
+  /// Estado actual, sin mostrar ningún diálogo.
+  Future<PermissionState> check(AppPermission permission);
 
-  Future<bool> request(AppPermission permission);
+  /// Solicita el permiso y devuelve el estado resultante.
+  Future<PermissionState> request(AppPermission permission);
 
-  /// Permisos imprescindibles que aún faltan.
-  Future<List<AppPermission>> missingCritical();
+  /// Estado de todos los permisos de una sola pasada.
+  Future<Map<AppPermission, PermissionState>> checkAll();
 
+  /// Abre la pantalla de ajustes de la app en el sistema.
   Future<void> openSystemSettings();
 }

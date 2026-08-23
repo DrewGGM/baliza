@@ -47,7 +47,6 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"
         tools:targetApi="34" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- ===================================================================
          SEÑALIZACIÓN Y AVISOS
@@ -55,8 +54,14 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"
         tools:targetApi="tiramisu" />
     <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.FLASHLIGHT" />
+
+    <!-- NO se declara CAMERA. La linterna se controla con
+         CameraManager.setTorchMode(), que no exige ese permiso. Declararlo
+         provocaría un diálogo de "¿permitir que Baliza tome fotos y grabe
+         vídeo?" que la app no necesita y que sería difícil de justificar en
+         una herramienta que promete no recoger ningún dato.
+
+         Tampoco FLASHLIGHT: quedó obsoleto y hoy no concede nada. -->
 
     <!-- Permite que la pregunta "¿estás bien?" aparezca sobre la pantalla de
          bloqueo. Sin esto, quien no pueda desbloquear el teléfono no puede

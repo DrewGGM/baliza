@@ -228,6 +228,19 @@ class BalizaRuntime {
       simulatedSensors: simSensors,
     );
 
+    // Los botones del aviso persistente son el único control disponible con
+    // la pantalla bloqueada. Aquí se encaminan a quien corresponde.
+    final commandSub = keepAlive.commands.listen((command) {
+      switch (command) {
+        case KeepAliveCommand.stopSos:
+          unawaited(sosController.stopSos());
+        case KeepAliveCommand.stopScan:
+          unawaited(rescueController.stopScanning());
+      }
+    });
+    disposers.add(commandSub.cancel);
+    disposers.add(keepAlive.dispose);
+
     // La vigilancia arranca sola si la persona la dejó activada.
     if (settings.autoDetection) {
       unawaited(detectionController.start());
@@ -241,9 +254,9 @@ class BalizaRuntime {
   /// `flutter_foreground_task` sólo existe en Android e iOS. En escritorio y
   /// web no hay nada que mantener vivo, así que se usa la versión nula.
   static KeepAliveService _buildKeepAlive() {
-    if (kIsWeb) return const NoopKeepAlive();
+    if (kIsWeb) return NoopKeepAlive();
     if (Platform.isAndroid || Platform.isIOS) return ForegroundKeepAlive();
-    return const NoopKeepAlive();
+    return NoopKeepAlive();
   }
 
   /// Cambia el escenario de simulación en caliente.

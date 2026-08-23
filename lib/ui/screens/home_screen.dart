@@ -82,10 +82,17 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: <Widget>[
                         const SizedBox(height: Space.sm),
                         _StateSummary(sos: sos),
-                        const Spacer(),
 
-                        // El botón vive en el tercio inferior, dentro del
-                        // alcance del pulgar con una sola mano.
+                        // El espacio libre se reparte 3:2 en lugar de empujar
+                        // el botón contra el borde inferior.
+                        //
+                        // El botón debe quedar en la mitad baja, que es donde
+                        // alcanza el pulgar con una sola mano; pero con un
+                        // único separador arriba se iba al extremo y dejaba un
+                        // vacío enorme bajo la cabecera. Repartido queda
+                        // centrado en su zona y la pantalla se lee equilibrada.
+                        const Spacer(flex: 3),
+
                         SosButton(
                           active: transmitting,
                           enabled: sos.radioState != RadioState.unsupported,
@@ -93,9 +100,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           onDeactivate: () => unawaited(sos.stopSos()),
                         ),
 
-                        const SizedBox(height: Space.lg),
+                        const Spacer(flex: 2),
+
                         _SecondaryActions(sos: sos),
-                        const SizedBox(height: Space.xl),
+                        const SizedBox(height: Space.lg),
                       ],
                     ),
                   ),

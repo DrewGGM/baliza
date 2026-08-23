@@ -164,6 +164,9 @@ class SosController extends ChangeNotifier {
       await _keepAlive.start(
         title: 'Emitiendo señal de auxilio',
         body: 'Mantén el teléfono encendido y destapado.',
+        buttons: const <KeepAliveButton>[
+          KeepAliveButton(id: KeepAliveCommand.stopSos, text: 'Detener'),
+        ],
       );
     } catch (e) {
       // Causa habitual: los permisos de Bluetooth no están concedidos. Desde
@@ -192,11 +195,6 @@ class SosController extends ChangeNotifier {
 
     _refreshTimer?.cancel();
     _refreshTimer = Timer.periodic(refreshInterval, (_) => _refresh());
-
-    unawaited(_safely(
-      () => _notifications.showTransmitting(),
-      'aviso persistente',
-    ));
 
     notifyListeners();
   }
@@ -281,6 +279,9 @@ class SosController extends ChangeNotifier {
       () => _keepAlive.update(
         title: 'Emitiendo señal de auxilio',
         body: 'Llevas ${elapsed.inMinutes} min pidiendo ayuda.',
+        buttons: const <KeepAliveButton>[
+          KeepAliveButton(id: KeepAliveCommand.stopSos, text: 'Detener'),
+        ],
       ),
       'servicio en primer plano',
     );

@@ -3,6 +3,15 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
+/// Órdenes que el aviso persistente puede enviar a la aplicación.
+abstract final class KeepAliveCommand {
+  /// Identificador del botón que detiene la emisión de auxilio.
+  static const stopSos = 'baliza_stop_sos';
+
+  /// Identificador del botón que detiene la búsqueda.
+  static const stopScan = 'baliza_stop_scan';
+}
+
 /// Contrato del servicio que mantiene vivo el proceso.
 abstract interface class KeepAliveService {
   /// Configura los canales del servicio. Debe ser idempotente.
@@ -13,14 +22,39 @@ abstract interface class KeepAliveService {
 
   Future<bool> get isRunning;
 
-  Future<void> start({required String title, required String body});
+  /// Órdenes que llegan desde los botones del aviso persistente.
+  ///
+  /// Es el canal por el que "Detener" llega a la aplicación cuando la pantalla
+  /// está bloqueada y no hay interfaz con la que interactuar.
+  Stream<String> get commands;
 
-  Future<void> update({required String title, required String body});
+  Future<void> start({
+    required String title,
+    required String body,
+    List<KeepAliveButton> buttons,
+  });
+
+  Future<void> update({
+    required String title,
+    required String body,
+    List<KeepAliveButton>? buttons,
+  });
 
   Future<void> stop();
+
+  Future<void> dispose();
 }
 
-/// Mantiene vivo el proceso mientras la baliza emite o busca.
+/// Botón del aviso persistente, en términos del dominio de la aplicación.
+class KeepAliveButton {
+  const KeepAliveButton({required this.id, required this.text});
+
+  final String id;
+  final String text;
+}
+
+/// Mantiene vivo el proceso mientras la baliza emite o busca, y ofrece el
+/// único control accesible cuando la pantalla está bloqueada.
 ///
 /// ## Por qué hace falta
 ///
@@ -31,19 +65,29 @@ abstract interface class KeepAliveService {
 /// emitir justo cuando la persona lleva un rato quieta bajo escombros y ya no
 /// está mirando el teléfono — es decir, en el único escenario que importa.
 ///
-/// ## Qué hace y qué no
+/// ## Por qué el botón "Detener" vive aquí y no en otra notificación
 ///
-/// El servicio no emite: el anuncio BLE sigue viviendo en el aislado principal,
-/// junto con el resto de la aplicación. Lo único que hace este servicio es
-/// existir, y al existir le dice al sistema operativo que el proceso está
-/// realizando trabajo visible para la persona usuaria y no debe terminarse.
+/// Las acciones de una notificación normal se entregan a un **aislado
+/// distinto** cuando la aplicación no está en primer plano. Ese aislado no
+/// tiene acceso al estado de la app, así que un manejador allí no puede
+/// detener nada: la persona pulsa "Detener", la notificación desaparece y la
+/// sirena sigue sonando.
 ///
-/// Es la razón de que el manejador no haga nada en `onRepeatEvent`: cualquier
-/// trabajo real ahí ocurriría en otro aislado, sin acceso al estado de la app.
+/// El servicio en primer plano sí tiene un canal de vuelta al aislado
+/// principal (`sendDataToMain`). Por eso el control de detención vive en su
+/// aviso y no en uno aparte, y por eso hay **un solo** aviso persistente: dos
+/// avisos con dos botones "Detener" de los que sólo uno funciona es peor que
+/// no tener ninguno.
 class ForegroundKeepAlive implements KeepAliveService {
   ForegroundKeepAlive();
 
   bool _initialized = false;
+
+  final StreamController<String> _commands =
+      StreamController<String>.broadcast();
+
+  @override
+  Stream<String> get commands => _commands.stream;
 
   @override
   Future<void> initialize() async {
@@ -64,7 +108,7 @@ class ForegroundKeepAlive implements KeepAliveService {
         showWhen: true,
       ),
       iosNotificationOptions: const IOSNotificationOptions(
-        showNotification: false,
+        showNotification: true,
         playSound: false,
       ),
       foregroundTaskOptions: ForegroundTaskOptions(
@@ -77,7 +121,16 @@ class ForegroundKeepAlive implements KeepAliveService {
       ),
     );
 
+    // Canal de vuelta: lo que el aislado del servicio envía llega aquí.
+    FlutterForegroundTask.addTaskDataCallback(_onTaskData);
+
     _initialized = true;
+  }
+
+  void _onTaskData(Object data) {
+    if (data is String && !_commands.isClosed) {
+      _commands.add(data);
+    }
   }
 
   /// Solicita los permisos que el servicio necesita para sobrevivir.
@@ -111,13 +164,19 @@ class ForegroundKeepAlive implements KeepAliveService {
   Future<void> start({
     required String title,
     required String body,
+    List<KeepAliveButton> buttons = const <KeepAliveButton>[],
   }) async {
     await initialize();
+
+    final mapped = buttons
+        .map((b) => NotificationButton(id: b.id, text: b.text))
+        .toList(growable: false);
 
     if (await FlutterForegroundTask.isRunningService) {
       await FlutterForegroundTask.updateService(
         notificationTitle: title,
         notificationText: body,
+        notificationButtons: mapped,
       );
       return;
     }
@@ -126,6 +185,7 @@ class ForegroundKeepAlive implements KeepAliveService {
       serviceId: 4210,
       notificationTitle: title,
       notificationText: body,
+      notificationButtons: mapped,
       callback: _startCallback,
     );
   }
@@ -134,11 +194,15 @@ class ForegroundKeepAlive implements KeepAliveService {
   Future<void> update({
     required String title,
     required String body,
+    List<KeepAliveButton>? buttons,
   }) async {
     if (!await FlutterForegroundTask.isRunningService) return;
     await FlutterForegroundTask.updateService(
       notificationTitle: title,
       notificationText: body,
+      notificationButtons: buttons
+          ?.map((b) => NotificationButton(id: b.id, text: b.text))
+          .toList(growable: false),
     );
   }
 
@@ -146,6 +210,12 @@ class ForegroundKeepAlive implements KeepAliveService {
   Future<void> stop() async {
     if (!await FlutterForegroundTask.isRunningService) return;
     await FlutterForegroundTask.stopService();
+  }
+
+  @override
+  Future<void> dispose() async {
+    FlutterForegroundTask.removeTaskDataCallback(_onTaskData);
+    await _commands.close();
   }
 }
 
@@ -158,10 +228,11 @@ void _startCallback() {
   FlutterForegroundTask.setTaskHandler(_KeepAliveHandler());
 }
 
-/// Manejador deliberadamente vacío.
+/// Manejador del aislado del servicio.
 ///
-/// Todo el trabajo real —anuncio BLE, escaneo, sensores— vive en el aislado
-/// principal. Este manejador existe únicamente para que el servicio exista.
+/// No hace trabajo de dominio: el anuncio BLE, el escaneo y los sensores viven
+/// en el aislado principal. Su única función real es reenviar las pulsaciones
+/// de los botones del aviso hacia allí.
 class _KeepAliveHandler extends TaskHandler {
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
@@ -174,14 +245,35 @@ class _KeepAliveHandler extends TaskHandler {
   }
 
   @override
+  void onNotificationButtonPressed(String id) {
+    debugPrint('[ForegroundKeepAlive] botón pulsado: $id');
+    // Cruza al aislado principal, que es el único que puede detener la radio,
+    // la sirena y la vibración.
+    FlutterForegroundTask.sendDataToMain(id);
+  }
+
+  @override
+  void onNotificationPressed() {
+    // Al tocar el cuerpo del aviso se abre la app, para que la persona vea el
+    // estado completo y el botón grande de detención.
+    FlutterForegroundTask.launchApp();
+  }
+
+  @override
   Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
     debugPrint('[ForegroundKeepAlive] servicio detenido (timeout: $isTimeout)');
   }
 }
 
-/// Implementación nula, para simulación y escritorio.
+/// Implementación nula, para escritorio y web.
 class NoopKeepAlive implements KeepAliveService {
-  const NoopKeepAlive();
+  NoopKeepAlive();
+
+  final StreamController<String> _commands =
+      StreamController<String>.broadcast();
+
+  @override
+  Stream<String> get commands => _commands.stream;
 
   @override
   Future<void> initialize() async {}
@@ -193,12 +285,25 @@ class NoopKeepAlive implements KeepAliveService {
   Future<bool> get isRunning async => false;
 
   @override
-  Future<void> start({required String title, required String body}) async =>
+  Future<void> start({
+    required String title,
+    required String body,
+    List<KeepAliveButton> buttons = const <KeepAliveButton>[],
+  }) async =>
       debugPrint('[NoopKeepAlive] servicio ON: $title');
 
   @override
-  Future<void> update({required String title, required String body}) async {}
+  Future<void> update({
+    required String title,
+    required String body,
+    List<KeepAliveButton>? buttons,
+  }) async {}
 
   @override
   Future<void> stop() async => debugPrint('[NoopKeepAlive] servicio OFF');
+
+  @override
+  Future<void> dispose() async {
+    await _commands.close();
+  }
 }

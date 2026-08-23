@@ -10,6 +10,7 @@ import '../app.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
 import 'medical_profile_screen.dart';
+import 'permissions_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -77,6 +78,44 @@ class SettingsScreen extends StatelessWidget {
                                     ? BalizaColors.textSecondary
                                     : BalizaColors.warning,
                               ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.chevron_right,
+                        color: BalizaColors.textTertiary,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: Space.md),
+
+                // -- Permisos -----------------------------------------------
+                BalizaCard(
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const PermissionsScreen(),
+                    ),
+                  ),
+                  padding: const EdgeInsets.all(Space.lg),
+                  child: Row(
+                    children: <Widget>[
+                      const Icon(
+                        Icons.verified_user_outlined,
+                        color: BalizaColors.textSecondary,
+                        size: 26,
+                      ),
+                      const SizedBox(width: Space.lg),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text('Permisos', style: BalizaText.body),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Revisa qué concediste y para qué sirve cada uno',
+                              style: BalizaText.caption,
                             ),
                           ],
                         ),
