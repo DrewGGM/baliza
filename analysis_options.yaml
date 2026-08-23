@@ -1,0 +1,60 @@
+# Reglas de análisis estático de Baliza.
+#
+# La base es `flutter_lints`, endurecida en los puntos donde un descuido
+# tendría consecuencias reales en una app de emergencia.
+
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
+
+  errors:
+    # Un `await` olvidado en el arranque de la emisión significa que la baliza
+    # cree estar emitiendo cuando todavía no lo está. Es un error, no un aviso.
+    unawaited_futures: error
+    # Código muerto: exactamente el defecto que encontramos en el detector de
+    # referencia. Que el analizador lo trate como error es deliberado.
+    dead_code: error
+    unnecessary_null_comparison: error
+    invalid_use_of_visible_for_testing_member: error
+
+  exclude:
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**
+
+linter:
+  rules:
+    # -- Desactivadas a conciencia -------------------------------------------
+
+    # La arquitectura inyecta colaboradores por constructor y los guarda en
+    # campos privados. Esta regla exigiría exponerlos como parámetros con
+    # nombre privado, que Dart no admite, o hacer públicos campos que deben
+    # seguir encapsulados.
+    prefer_initializing_formals: false
+
+    # -- Activadas por encima de la base -------------------------------------
+    always_declare_return_types: true
+    avoid_dynamic_calls: true
+    avoid_slow_async_io: true
+    cancel_subscriptions: true
+    close_sinks: true
+    comment_references: true
+    directives_ordering: true
+    prefer_final_locals: true
+    prefer_single_quotes: true
+    require_trailing_commas: true
+    sort_child_properties_last: true
+    throw_in_finally: true
+    unawaited_futures: true
+    unnecessary_await_in_return: true
+    use_super_parameters: true

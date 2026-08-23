@@ -1,0 +1,147 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- ===================================================================
+         BLUETOOTH
+
+         Android partió los permisos de Bluetooth en la versión 12 (API 31).
+         Se declaran ambos juegos: los nuevos con su ámbito acotado, y los
+         antiguos limitados con maxSdkVersion para que no se pidan de más en
+         equipos modernos.
+
+         `neverForLocation` en BLUETOOTH_SCAN es importante: declara ante el
+         sistema que la app NO deduce ubicación a partir de los dispositivos
+         que encuentra. Es cierto —Baliza sólo mide potencia de señal— y
+         evita tener que pedir ubicación en Android 12 o superior.
+         =================================================================== -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="s" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE"
+        tools:targetApi="s" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"
+        tools:targetApi="s" />
+
+    <uses-permission android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+
+    <!-- Hasta Android 11 el sistema exigía permiso de ubicación para poder
+         escanear por Bluetooth, aunque la app no usara el GPS. Se limita a
+         esas versiones para no pedirlo donde ya no hace falta. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"
+        android:maxSdkVersion="30" />
+
+    <!-- ===================================================================
+         EJECUCIÓN CONTINUA
+
+         La baliza debe seguir emitiendo con la pantalla apagada y la app en
+         segundo plano. Sin un servicio en primer plano, Android mata el
+         proceso a los pocos minutos y la señal desaparece justo cuando más
+         falta hace.
+         =================================================================== -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"
+        tools:targetApi="34" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- ===================================================================
+         SEÑALIZACIÓN Y AVISOS
+         =================================================================== -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"
+        tools:targetApi="tiramisu" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.FLASHLIGHT" />
+
+    <!-- Permite que la pregunta "¿estás bien?" aparezca sobre la pantalla de
+         bloqueo. Sin esto, quien no pueda desbloquear el teléfono no puede
+         responder. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"
+        tools:targetApi="34" />
+
+    <!-- ===================================================================
+         REQUISITOS DE HARDWARE
+
+         El Bluetooth LE se declara requerido: sin él la app no tiene sentido.
+         La cámara y el barómetro NO: la linterna y el tercer sensor de
+         detección son mejoras, y excluir a los equipos que no los tienen
+         dejaría fuera precisamente a la gama de entrada, que es la más común
+         entre la población más vulnerable.
+         =================================================================== -->
+    <uses-feature android:name="android.hardware.bluetooth_le"
+        android:required="true" />
+    <uses-feature android:name="android.hardware.camera.flash"
+        android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.accelerometer"
+        android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.gyroscope"
+        android:required="false" />
+    <uses-feature android:name="android.hardware.sensor.barometer"
+        android:required="false" />
+
+    <application
+        android:label="Baliza"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:windowSoftInputMode="adjustResize">
+
+            <meta-data
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme" />
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+
+        <!-- Icono monocromo para la barra de estado. Android exige silueta
+             blanca sobre transparente; un icono a color se ve como un cuadro
+             gris. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@mipmap/ic_launcher" />
+
+        <!-- Recepción de las acciones de la notificación "¿estás bien?" -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+    </application>
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT" />
+            <data android:mimeType="text/plain" />
+        </intent>
+    </queries>
+</manifest>
