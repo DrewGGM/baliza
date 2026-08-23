@@ -84,6 +84,21 @@
     <uses-feature android:name="android.hardware.sensor.barometer"
         android:required="false" />
 
+    <!-- Android marca estas dos como REQUERIDAS de forma implícita al declarar
+         los permisos de cámara y ubicación. Eso excluiría del catálogo a
+         equipos sin cámara o sin GPS, precisamente los de gama más baja, que
+         son los que más abundan entre la población vulnerable a la que va
+         dirigida esta app. Se declaran opcionales de forma explícita: Baliza
+         funciona sin ninguna de las dos. -->
+    <uses-feature android:name="android.hardware.camera"
+        android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus"
+        android:required="false" />
+    <uses-feature android:name="android.hardware.location"
+        android:required="false" />
+    <uses-feature android:name="android.hardware.location.gps"
+        android:required="false" />
+
     <application
         android:label="Baliza"
         android:name="${applicationName}"
