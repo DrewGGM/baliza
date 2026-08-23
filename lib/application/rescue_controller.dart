@@ -7,6 +7,7 @@ import '../domain/ports/beacon_transport.dart';
 import '../domain/ports/clock.dart';
 import '../domain/ports/device_services.dart';
 import '../domain/services/triage.dart';
+import '../infrastructure/platform/foreground_service.dart';
 import 'app_settings.dart';
 
 /// Qué se muestra en la lista de rescate.
@@ -26,8 +27,10 @@ class RescueController extends ChangeNotifier {
     required NotificationService notifications,
     required AppSettings settings,
     required Clock clock,
+    required KeepAliveService keepAlive,
     this.refreshInterval = const Duration(seconds: 1),
-  })  : _scanner = scanner,
+  })  : _keepAlive = keepAlive,
+        _scanner = scanner,
         _notifications = notifications,
         _settings = settings,
         _clock = clock {
@@ -41,6 +44,7 @@ class RescueController extends ChangeNotifier {
   final NotificationService _notifications;
   final AppSettings _settings;
   final Clock _clock;
+  final KeepAliveService _keepAlive;
 
   /// Cada cuánto se recalcula el orden y se refresca la interfaz. Un segundo
   /// es suficiente: más rápido sólo produce parpadeo, más lento hace que la
@@ -99,6 +103,18 @@ class RescueController extends ChangeNotifier {
     }
 
     _scanning = true;
+
+    // El rescatista camina con el teléfono en el bolsillo y la pantalla
+    // apagada; sin servicio en primer plano el escaneo se detendría solo.
+    try {
+      await _keepAlive.start(
+        title: 'Buscando personas',
+        body: 'Escuchando balizas cercanas.',
+      );
+    } catch (_) {
+      // Sin servicio la búsqueda funciona igual mientras la app esté visible.
+    }
+
     _receptionSub = _scanner.receptions.listen(_onReception, onError: (Object e) {
       _lastError = 'Error de recepción: $e';
       notifyListeners();
@@ -124,6 +140,11 @@ class RescueController extends ChangeNotifier {
       // Detener nunca debe fallar de cara al usuario.
     }
     unawaited(_notifications.clearAll());
+    try {
+      await _keepAlive.stop();
+    } catch (_) {
+      // Detener nunca debe fallar de cara al usuario.
+    }
     notifyListeners();
   }
 

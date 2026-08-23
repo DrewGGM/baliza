@@ -111,6 +111,27 @@
             </intent-filter>
         </activity>
 
+        <!-- ===============================================================
+             SERVICIO EN PRIMER PLANO
+
+             Sin esta declaración el sistema no encuentra el componente y el
+             servicio no arranca: la app queda con una notificación que aparenta
+             persistencia pero no la tiene, y Android mata el proceso a los
+             pocos minutos de apagar la pantalla.
+
+             `connectedDevice` es el tipo correcto —el trabajo real es hablar
+             por Bluetooth con dispositivos cercanos—. Desde Android 14 el tipo
+             declarado debe corresponderse con lo que el servicio hace de
+             verdad, o el sistema rechaza el arranque.
+
+             El nombre de la clase lo fija el plugin y no debe cambiarse.
+             =============================================================== -->
+        <service
+            android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+            android:foregroundServiceType="connectedDevice"
+            android:stopWithTask="false"
+            android:exported="false" />
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

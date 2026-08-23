@@ -306,6 +306,24 @@ que nadie va a responder.
 </details>
 
 <details>
+<summary><b>Un servicio en primer plano, no sólo una notificación</b></summary>
+
+Una notificación persistente **no** impide que Android mate la aplicación. Desde
+Android 8 el sistema congela los procesos en segundo plano a los pocos minutos de
+apagar la pantalla, y desde Android 12 lo hace de forma más agresiva todavía.
+
+Baliza levanta un servicio en primer plano real, de tipo `connectedDevice`, que
+es el que corresponde a hablar por Bluetooth con dispositivos cercanos. Desde
+Android 14 ese tipo sólo puede arrancar si los permisos de Bluetooth ya fueron
+**concedidos en tiempo de ejecución** — no basta con declararlos en el
+manifiesto.
+
+Si el servicio no arranca, la app **lo dice**: avisa de que hay que mantener la
+pantalla encendida. Callarlo y mostrar "todo en orden" sería mentir sobre lo
+único que importa.
+</details>
+
+<details>
 <summary><b>La sirena es un barrido ascendente, no un pitido</b></summary>
 
 Banda 1.000–2.600 Hz, donde el oído humano es más sensible y donde un silbato de

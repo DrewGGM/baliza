@@ -305,11 +305,21 @@ class _StateSummary extends StatelessWidget {
               icon: Icons.auto_awesome_motion,
             ),
           ],
+          if (sos.keepAliveFailed) ...<Widget>[
+            const SizedBox(height: Space.lg),
+            const InlineNotice(
+              message: 'No se pudo asegurar la emisión en segundo plano. '
+                  'Mantén la pantalla encendida: si se apaga, el sistema '
+                  'puede detener la señal en pocos minutos.',
+              icon: Icons.screen_lock_portrait,
+              color: BalizaColors.danger,
+            ),
+          ],
           if (sos.degradations.isNotEmpty) ...<Widget>[
             const SizedBox(height: Space.lg),
             InlineNotice(
               message: '${sos.degradations.join(', ')}. '
-                  'La señal de radio sigue saliendo con normalidad.',
+                  'La señal de radio sigue saliendo.',
               icon: Icons.warning_amber_rounded,
             ),
           ],

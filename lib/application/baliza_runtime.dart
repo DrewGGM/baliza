@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 
@@ -8,6 +9,7 @@ import '../domain/ports/device_services.dart';
 import '../domain/services/beacon_identity.dart';
 import '../infrastructure/ble/ble_scanner.dart';
 import '../infrastructure/ble/ble_transmitter.dart';
+import '../infrastructure/platform/foreground_service.dart';
 import '../infrastructure/platform/notifications.dart';
 import '../infrastructure/platform/platform_services.dart';
 import '../infrastructure/sensors/device_sensors.dart';
@@ -46,6 +48,7 @@ class BalizaRuntime {
     required this.permissions,
     required this.clock,
     required this.identity,
+    required this.keepAlive,
     required List<Future<void> Function()> disposers,
     this.simulationBus,
     this.simulatedSensors,
@@ -59,6 +62,9 @@ class BalizaRuntime {
   final PermissionService permissions;
   final Clock clock;
   final BeaconIdentity identity;
+
+  /// Servicio que impide que el sistema mate el proceso mientras se emite.
+  final KeepAliveService keepAlive;
 
   /// Bus de simulación, sólo presente en [RuntimeMode.simulated].
   final SimulatedRadioBus? simulationBus;
@@ -93,6 +99,7 @@ class BalizaRuntime {
     PermissionService permissions;
     SimulatedRadioBus? bus;
     SimulatedSensorSource? simSensors;
+    KeepAliveService keepAlive;
 
     if (mode == RuntimeMode.simulated) {
       bus = SimulatedRadioBus();
@@ -110,6 +117,14 @@ class BalizaRuntime {
       signaling = NoopSignaling();
       battery = SimulatedBattery();
       permissions = const AlwaysGrantedPermissions();
+
+      // El servicio en primer plano NO se simula. El modo simulación sustituye
+      // el radio, no el sistema operativo: si alguien prueba la app en un
+      // teléfono real, el aviso persistente y la supervivencia del proceso
+      // deben comportarse igual que en producción. De lo contrario estaríamos
+      // dejando sin ejercitar justo la pieza que sostiene la emisión con la
+      // pantalla apagada.
+      keepAlive = _buildKeepAlive();
 
       disposers
         ..add(simTx.dispose)
@@ -132,6 +147,8 @@ class BalizaRuntime {
       battery = DeviceBattery();
       permissions = const SystemPermissions();
 
+      keepAlive = _buildKeepAlive();
+
       disposers
         ..add(tx.dispose)
         ..add(rx.dispose)
@@ -139,6 +156,8 @@ class BalizaRuntime {
         ..add(audioSiren.dispose)
         ..add(deviceSignaling.dispose);
     }
+
+    await keepAlive.initialize();
 
     // Las notificaciones necesitan poder llamar de vuelta a los controladores,
     // que todavía no existen. Se resuelve con indirección diferida.
@@ -170,6 +189,7 @@ class BalizaRuntime {
       identity: identity,
       settings: settings,
       clock: clock,
+      keepAlive: keepAlive,
     );
 
     final rescueController = RescueController(
@@ -177,6 +197,7 @@ class BalizaRuntime {
       notifications: notifications,
       settings: settings,
       clock: clock,
+      keepAlive: keepAlive,
     );
 
     detectionController = DetectionController(
@@ -201,6 +222,7 @@ class BalizaRuntime {
       permissions: permissions,
       clock: clock,
       identity: identity,
+      keepAlive: keepAlive,
       disposers: disposers,
       simulationBus: bus,
       simulatedSensors: simSensors,
@@ -212,6 +234,16 @@ class BalizaRuntime {
     }
 
     return runtime;
+  }
+
+  /// Elige la implementación del servicio según la plataforma.
+  ///
+  /// `flutter_foreground_task` sólo existe en Android e iOS. En escritorio y
+  /// web no hay nada que mantener vivo, así que se usa la versión nula.
+  static KeepAliveService _buildKeepAlive() {
+    if (kIsWeb) return const NoopKeepAlive();
+    if (Platform.isAndroid || Platform.isIOS) return ForegroundKeepAlive();
+    return const NoopKeepAlive();
   }
 
   /// Cambia el escenario de simulación en caliente.

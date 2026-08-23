@@ -80,6 +80,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       if (ok) _granted.add(p);
     }
 
+    // La exención de optimización de batería se pide al final y por separado:
+    // abre una pantalla del sistema, y encadenarla con los demás diálogos
+    // haría que la persona la descartara sin leerla.
+    if (mounted) {
+      await RuntimeScope.of(context).keepAlive.requestPermissions();
+    }
+
     if (mounted) setState(() => _requesting = false);
   }
 
@@ -240,6 +247,9 @@ class _PermissionsPage extends StatelessWidget {
     AppPermission.notifications:
         'Para poder preguntarte si estás bien y que respondas sin desbloquear '
             'el teléfono.',
+    AppPermission.batteryOptimization:
+        'Para que la baliza siga emitiendo con la pantalla apagada. Sin esto, '
+            'el sistema apaga la app a los pocos minutos.',
   };
 
   @override

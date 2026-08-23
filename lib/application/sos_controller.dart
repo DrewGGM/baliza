@@ -8,6 +8,7 @@ import '../domain/ports/clock.dart';
 import '../domain/ports/device_services.dart';
 import '../domain/services/beacon_identity.dart';
 import '../domain/value_objects/enums.dart';
+import '../infrastructure/platform/foreground_service.dart';
 import 'app_settings.dart';
 
 /// En qué estado está la emisión de auxilio.
@@ -40,8 +41,10 @@ class SosController extends ChangeNotifier {
     required BeaconIdentity identity,
     required AppSettings settings,
     required Clock clock,
+    required KeepAliveService keepAlive,
     this.refreshInterval = const Duration(seconds: 30),
-  })  : _transmitter = transmitter,
+  })  : _keepAlive = keepAlive,
+        _transmitter = transmitter,
         _siren = siren,
         _signaling = signaling,
         _battery = battery,
@@ -60,6 +63,7 @@ class SosController extends ChangeNotifier {
   final BeaconIdentity _identity;
   final AppSettings _settings;
   final Clock _clock;
+  final KeepAliveService _keepAlive;
 
   /// Cada cuánto se refresca el contenido de la baliza (minutos y batería).
   final Duration refreshInterval;
@@ -75,6 +79,16 @@ class SosController extends ChangeNotifier {
 
   /// Fallos no fatales de los periféricos, para poder avisarlos sin alarmar.
   final List<String> _degradations = [];
+
+  /// `true` si el servicio en primer plano no pudo arrancar.
+  ///
+  /// Se distingue del resto de degradaciones porque **no es cosmética**: sin
+  /// servicio, Android detiene la emisión a los pocos minutos de apagar la
+  /// pantalla. Decirle a la persona que "todo sigue con normalidad" en ese
+  /// caso sería mentirle sobre lo único que importa.
+  bool _keepAliveFailed = false;
+
+  bool get keepAliveFailed => _keepAliveFailed;
 
   SosState get state => _state;
   bool get isTransmitting => _state == SosState.transmitting;
@@ -121,6 +135,7 @@ class SosController extends ChangeNotifier {
 
     _lastError = null;
     _degradations.clear();
+    _keepAliveFailed = false;
 
     // Congelar el identificador es lo primero: a partir de aquí la
     // continuidad de la señal importa más que el anonimato.
@@ -141,11 +156,29 @@ class SosController extends ChangeNotifier {
       medicalProfile: _settings.profile,
     );
 
+    // El servicio se levanta ANTES de emitir. Si el proceso muriera entre las
+    // dos llamadas, es preferible un servicio sin baliza (inofensivo) que una
+    // baliza sin servicio, que el sistema mataría a los pocos minutos.
+    _keepAliveFailed = false;
+    try {
+      await _keepAlive.start(
+        title: 'Emitiendo señal de auxilio',
+        body: 'Mantén el teléfono encendido y destapado.',
+      );
+    } catch (e) {
+      // Causa habitual: los permisos de Bluetooth no están concedidos. Desde
+      // Android 14 un servicio de tipo `connectedDevice` sólo puede arrancar
+      // si el permiso ya fue otorgado en tiempo de ejecución.
+      _keepAliveFailed = true;
+      debugPrint('[SosController] servicio en primer plano no disponible: $e');
+    }
+
     try {
       await _transmitter.start(signal);
     } catch (e) {
       _lastError = 'No se pudo iniciar la emisión: $e';
       _identity.unfreeze();
+      await _safely(() => _keepAlive.stop(), 'servicio en primer plano');
       _state = SosState.blocked;
       notifyListeners();
       return;
@@ -195,6 +228,7 @@ class SosController extends ChangeNotifier {
     await _safely(() => _signaling.stopVibration(), 'vibración');
     await _safely(() => _signaling.stopTorch(), 'linterna');
     await _safely(() => _notifications.clearAll(), 'avisos');
+    await _safely(() => _keepAlive.stop(), 'servicio en primer plano');
 
     // Se reanuda la rotación y se fuerza un identificador nuevo, para que la
     // baliza usada durante la emergencia no siga siendo rastreable después.
@@ -243,6 +277,13 @@ class SosController extends ChangeNotifier {
     );
 
     await _safely(() => _transmitter.update(updated), 'radio');
+    await _safely(
+      () => _keepAlive.update(
+        title: 'Emitiendo señal de auxilio',
+        body: 'Llevas ${elapsed.inMinutes} min pidiendo ayuda.',
+      ),
+      'servicio en primer plano',
+    );
     _signal = updated;
     notifyListeners();
   }
