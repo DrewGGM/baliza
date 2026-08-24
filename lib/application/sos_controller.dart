@@ -7,6 +7,7 @@ import '../domain/ports/beacon_transport.dart';
 import '../domain/ports/clock.dart';
 import '../domain/ports/device_services.dart';
 import '../domain/services/beacon_identity.dart';
+import '../domain/services/power_policy.dart';
 import '../domain/value_objects/enums.dart';
 import '../infrastructure/platform/foreground_service.dart';
 import 'app_settings.dart';
@@ -16,8 +17,11 @@ enum SosState {
   /// No se está emitiendo nada.
   idle,
 
-  /// Emisión activa.
+  /// Emisión de auxilio activa.
   transmitting,
+
+  /// Emitiendo "estoy bien", para que quien busque pueda descartarte.
+  broadcastingSafe,
 
   /// El radio no está listo (apagado, sin permisos o sin soporte).
   blocked,
@@ -42,8 +46,11 @@ class SosController extends ChangeNotifier {
     required AppSettings settings,
     required Clock clock,
     required KeepAliveService keepAlive,
+    required SettingsStore store,
+    this.powerPolicy = const PowerPolicy(),
     this.refreshInterval = const Duration(seconds: 30),
-  })  : _keepAlive = keepAlive,
+  })  : _store = store,
+        _keepAlive = keepAlive,
         _transmitter = transmitter,
         _siren = siren,
         _signaling = signaling,
@@ -64,9 +71,19 @@ class SosController extends ChangeNotifier {
   final AppSettings _settings;
   final Clock _clock;
   final KeepAliveService _keepAlive;
+  final SettingsStore _store;
+
+  /// Decide qué señales auxiliares se mantienen según la batería.
+  final PowerPolicy powerPolicy;
 
   /// Cada cuánto se refresca el contenido de la baliza (minutos y batería).
   final Duration refreshInterval;
+
+  static const _kActive = 'sos_active';
+  static const _kStartedAt = 'sos_started_at';
+  static const _kAutoDetected = 'sos_auto_detected';
+  static const _kTrapped = 'sos_trapped';
+  static const _kBeaconId = 'sos_beacon_id';
 
   StreamSubscription<RadioState>? _radioSub;
   Timer? _refreshTimer;
@@ -89,6 +106,25 @@ class SosController extends ChangeNotifier {
   bool _keepAliveFailed = false;
 
   bool get keepAliveFailed => _keepAliveFailed;
+
+  Timer? _safeTimer;
+  DateTime? _safeUntil;
+  PowerTier _powerTier = PowerTier.full;
+  int? _batteryLevel;
+  Timer? _sirenDutyTimer;
+
+  /// Nivel de ahorro vigente.
+  PowerTier get powerTier => _powerTier;
+
+  /// Explicación de qué se apagó por batería, o `null` si no se apagó nada.
+  String? get powerNotice => powerPolicy.explain(_powerTier, _batteryLevel);
+
+  /// Estimación gruesa del tiempo de emisión restante.
+  Duration? get estimatedLife =>
+      powerPolicy.estimatedBeaconLife(_batteryLevel, _powerTier);
+
+  /// `true` si se está emitiendo "estoy bien".
+  bool get isBroadcastingSafe => _state == SosState.broadcastingSafe;
 
   SosState get state => _state;
   bool get isTransmitting => _state == SosState.transmitting;
@@ -146,11 +182,14 @@ class SosController extends ChangeNotifier {
       if (trapped) SignalFlag.trapped,
     };
 
+    _batteryLevel = await _readBattery();
+    _powerTier = powerPolicy.tierFor(_batteryLevel);
+
     final signal = SosSignal(
       beaconId: _identity.current,
       messageType: MessageType.sos,
       flags: flags,
-      batteryPercent: await _readBattery(),
+      batteryPercent: _batteryLevel,
       elapsedMinutes: 0,
       peopleCount: _settings.peopleCount,
       medicalProfile: _settings.profile,
@@ -196,22 +235,162 @@ class SosController extends ChangeNotifier {
     _refreshTimer?.cancel();
     _refreshTimer = Timer.periodic(refreshInterval, (_) => _refresh());
 
+    await _persistActive(autoDetected: autoDetected, trapped: trapped);
+
     notifyListeners();
+  }
+
+  /// Guarda que hay una emisión en curso.
+  ///
+  /// Si el sistema mata el proceso —cosa que ocurre pese al servicio en primer
+  /// plano en capas de fabricante agresivas— al volver a arrancar hay que
+  /// reanudar la emisión sola. Una baliza que se apaga en silencio porque
+  /// Android recicló memoria es exactamente el fallo que esta app no se puede
+  /// permitir.
+  Future<void> _persistActive({
+    required bool autoDetected,
+    required bool trapped,
+  }) async {
+    try {
+      await _store.writeBool(_kActive, true);
+      await _store.writeInt(
+        _kStartedAt,
+        (_startedAt ?? _clock.now()).millisecondsSinceEpoch,
+      );
+      await _store.writeBool(_kAutoDetected, autoDetected);
+      await _store.writeBool(_kTrapped, trapped);
+      // El identificador se guarda para que un reinicio no rompa el
+      // seguimiento de quien ya venía siguiendo esta baliza.
+      final id = _signal?.beaconId;
+      if (id != null) await _store.writeInt(_kBeaconId, id);
+    } catch (e) {
+      debugPrint('[SosController] no se pudo persistir el estado: $e');
+    }
+  }
+
+  Future<void> _clearPersisted() async {
+    try {
+      await _store.remove(_kActive);
+      await _store.remove(_kStartedAt);
+      await _store.remove(_kAutoDetected);
+      await _store.remove(_kTrapped);
+      await _store.remove(_kBeaconId);
+    } catch (e) {
+      debugPrint('[SosController] no se pudo limpiar el estado: $e');
+    }
+  }
+
+  /// Reanuda una emisión que quedó interrumpida por la muerte del proceso.
+  ///
+  /// Devuelve `true` si había algo que reanudar. Conserva el instante de
+  /// inicio original para que el cronómetro y los minutos que viajan en la
+  /// baliza reflejen el tiempo real de espera, no el del reinicio.
+  Future<bool> resumeIfInterrupted() async {
+    try {
+      if (await _store.readBool(_kActive) != true) return false;
+
+      final startedMillis = await _store.readInt(_kStartedAt);
+      final autoDetected = await _store.readBool(_kAutoDetected) ?? false;
+      final trapped = await _store.readBool(_kTrapped) ?? false;
+      final previousId = await _store.readInt(_kBeaconId);
+
+      // Se restaura ANTES de emitir, para que la baliza salga ya con el
+      // identificador de siempre y no llegue a anunciarse con uno nuevo.
+      if (previousId != null) _identity.restore(previousId);
+
+      await startSos(autoDetected: autoDetected, trapped: trapped);
+
+      if (startedMillis != null && _state == SosState.transmitting) {
+        _startedAt = DateTime.fromMillisecondsSinceEpoch(startedMillis);
+        notifyListeners();
+      }
+      return true;
+    } catch (e) {
+      debugPrint('[SosController] no se pudo reanudar: $e');
+      return false;
+    }
   }
 
   /// Activa sirena, vibración y linterna según preferencias. Cada una en su
   /// propio bloque: que falle una no debe impedir las otras ni cortar la
   /// emisión de radio.
   Future<void> _startPeripherals() async {
-    if (_settings.siren) {
+    final tier = _powerTier;
+
+    // Cada señal exige DOS condiciones: que la persona la haya dejado activada
+    // y que quede batería para permitírsela. La preferencia manda sobre lo que
+    // se enciende; la batería, sobre lo que se puede sostener.
+    if (_settings.siren && tier.siren) {
       await _safely(() => _siren.start(), 'sirena');
+      _applySirenDutyCycle(tier);
     }
-    if (_settings.vibration) {
+    if (_settings.vibration && tier.vibration) {
       await _safely(() => _signaling.startVibrationPattern(), 'vibración');
     }
-    if (_settings.torch && _signaling.hasTorch) {
+    if (_settings.torch && tier.torch && _signaling.hasTorch) {
       await _safely(() => _signaling.startTorchPattern(), 'linterna');
     }
+  }
+
+  /// Alterna la sirena para que suene sólo una fracción del tiempo.
+  ///
+  /// Los silencios no son sólo ahorro: dejan oír la voz de quien busca, que
+  /// con la sirena continua queda tapada.
+  void _applySirenDutyCycle(PowerTier tier) {
+    _sirenDutyTimer?.cancel();
+    if (tier.sirenDutyCycle >= 1.0) return;
+
+    const cycle = Duration(seconds: 20);
+    final onFor = Duration(
+      milliseconds: (cycle.inMilliseconds * tier.sirenDutyCycle).round(),
+    );
+
+    var sounding = true;
+    _sirenDutyTimer = Timer.periodic(onFor, (timer) async {
+      if (_state != SosState.transmitting) {
+        timer.cancel();
+        return;
+      }
+      sounding = !sounding;
+      await _safely(
+        () => sounding ? _siren.start() : _siren.stop(),
+        'sirena',
+      );
+    });
+  }
+
+  /// Recalcula el nivel de ahorro y aplica los cambios si el nivel cambió.
+  Future<void> _applyPowerTier() async {
+    final next = powerPolicy.tierFor(_batteryLevel, current: _powerTier);
+    if (next == _powerTier) return;
+
+    _powerTier = next;
+
+    if (_state != SosState.transmitting) return;
+
+    // Se apaga lo que el nuevo nivel ya no permite y se enciende lo que
+    // recupera, sin tocar la emisión de radio, que nunca se interrumpe.
+    if (!next.torch) {
+      await _safely(() => _signaling.stopTorch(), 'linterna');
+    } else if (_settings.torch && _signaling.hasTorch) {
+      await _safely(() => _signaling.startTorchPattern(), 'linterna');
+    }
+
+    if (!next.vibration) {
+      await _safely(() => _signaling.stopVibration(), 'vibración');
+    } else if (_settings.vibration) {
+      await _safely(() => _signaling.startVibrationPattern(), 'vibración');
+    }
+
+    if (!next.siren) {
+      _sirenDutyTimer?.cancel();
+      await _safely(() => _siren.stop(), 'sirena');
+    } else if (_settings.siren) {
+      await _safely(() => _siren.start(), 'sirena');
+      _applySirenDutyCycle(next);
+    }
+
+    notifyListeners();
   }
 
   /// Detiene toda la emisión.
@@ -220,6 +399,10 @@ class SosController extends ChangeNotifier {
 
     _refreshTimer?.cancel();
     _refreshTimer = null;
+    _sirenDutyTimer?.cancel();
+    _sirenDutyTimer = null;
+
+    await _clearPersisted();
 
     await _safely(() => _transmitter.stop(), 'radio');
     await _safely(() => _siren.stop(), 'sirena');
@@ -239,8 +422,12 @@ class SosController extends ChangeNotifier {
   }
 
   /// Emite un "estoy bien" puntual, para que quien busque pueda descartarte.
-  Future<void> broadcastSafe({Duration duration = const Duration(minutes: 2)}) async {
+  Future<void> broadcastSafe({
+    Duration duration = const Duration(minutes: 2),
+  }) async {
     if (_state == SosState.transmitting) return;
+
+    _safeUntil = _clock.now().add(duration);
 
     final signal = SosSignal(
       beaconId: _identity.current,
@@ -251,15 +438,38 @@ class SosController extends ChangeNotifier {
 
     await _safely(() => _transmitter.start(signal), 'radio');
     _signal = signal;
+    _state = SosState.broadcastingSafe;
     notifyListeners();
 
-    Timer(duration, () async {
-      if (_state != SosState.transmitting) {
-        await _safely(() => _transmitter.stop(), 'radio');
-        _signal = null;
-        notifyListeners();
-      }
+    _safeTimer?.cancel();
+    _safeTimer = Timer(duration, () async {
+      if (_state != SosState.broadcastingSafe) return;
+      await _safely(() => _transmitter.stop(), 'radio');
+      _signal = null;
+      _safeUntil = null;
+      _state = SosState.idle;
+      notifyListeners();
     });
+  }
+
+  /// Detiene la emisión de "estoy bien" antes de que expire sola.
+  Future<void> stopSafeBroadcast() async {
+    if (_state != SosState.broadcastingSafe) return;
+    _safeTimer?.cancel();
+    _safeTimer = null;
+    await _safely(() => _transmitter.stop(), 'radio');
+    _signal = null;
+    _safeUntil = null;
+    _state = SosState.idle;
+    notifyListeners();
+  }
+
+  /// Cuánto queda de la emisión "estoy bien".
+  Duration? get safeRemaining {
+    final until = _safeUntil;
+    if (until == null || _state != SosState.broadcastingSafe) return null;
+    final left = until.difference(_clock.now());
+    return left.isNegative ? Duration.zero : left;
   }
 
   /// Refresca el contenido de la baliza sin cortar la emisión.
@@ -267,9 +477,12 @@ class SosController extends ChangeNotifier {
     final current = _signal;
     if (current == null || _state != SosState.transmitting) return;
 
+    _batteryLevel = await _readBattery();
+    await _applyPowerTier();
+
     final updated = current.copyWith(
       elapsedMinutes: elapsed.inMinutes,
-      batteryPercent: await _readBattery(),
+      batteryPercent: _batteryLevel,
       peopleCount: _settings.peopleCount,
       medicalProfile: _settings.profile,
     );
@@ -311,6 +524,8 @@ class SosController extends ChangeNotifier {
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _sirenDutyTimer?.cancel();
+    _safeTimer?.cancel();
     _radioSub?.cancel();
     super.dispose();
   }

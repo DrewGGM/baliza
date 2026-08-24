@@ -105,7 +105,7 @@
         android:required="false" />
 
     <application
-        android:label="Baliza"
+        android:label="@string/app_name"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 
@@ -130,6 +130,37 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- ===============================================================
+             ATAJO DE AJUSTES RÁPIDOS
+
+             Pone "Pedir ayuda" en el panel desplegable, accesible sin
+             desbloquear el teléfono y desde cualquier pantalla. Es el camino
+             más corto que ofrece Android para llegar a una acción.
+
+             `BIND_QUICK_SETTINGS_TILE` lo exige el sistema para poder
+             enlazar el servicio; sin él el atajo no aparece en la lista de
+             mosaicos disponibles.
+             =============================================================== -->
+        <service
+            android:name=".SosTileService"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/tile_sos_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+
+            <!-- Permite que el atajo funcione con la pantalla bloqueada, que
+                 es justamente el caso para el que existe. -->
+            <meta-data
+                android:name="android.service.quicksettings.ACTIVE_TILE"
+                android:value="false" />
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="false" />
+        </service>
 
         <!-- ===============================================================
              SERVICIO EN PRIMER PLANO

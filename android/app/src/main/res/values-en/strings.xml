@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Baliza</string>
+    <string name="tile_sos_label">Call for help</string>
+    <string name="tile_sos_subtitle">Baliza SOS</string>
+</resources>

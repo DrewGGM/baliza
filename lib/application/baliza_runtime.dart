@@ -12,6 +12,7 @@ import '../infrastructure/ble/ble_transmitter.dart';
 import '../infrastructure/platform/foreground_service.dart';
 import '../infrastructure/platform/notifications.dart';
 import '../infrastructure/platform/platform_services.dart';
+import '../infrastructure/platform/shortcuts.dart';
 import '../infrastructure/sensors/device_sensors.dart';
 import '../infrastructure/simulation/scenarios.dart';
 import '../infrastructure/simulation/simulated_radio.dart';
@@ -190,6 +191,7 @@ class BalizaRuntime {
       settings: settings,
       clock: clock,
       keepAlive: keepAlive,
+      store: store,
     );
 
     final rescueController = RescueController(
@@ -241,10 +243,39 @@ class BalizaRuntime {
     disposers.add(commandSub.cancel);
     disposers.add(keepAlive.dispose);
 
+    // Atajo de ajustes rápidos: pedir ayuda sin desbloquear el teléfono.
+    final shortcuts = ShortcutReceiver();
+    final shortcutSub = shortcuts.actions.listen((action) {
+      switch (action) {
+        case ShortcutAction.startSos:
+          unawaited(sosController.startSos());
+      }
+    });
+    disposers
+      ..add(shortcutSub.cancel)
+      ..add(shortcuts.dispose);
+
     // La vigilancia arranca sola si la persona la dejó activada.
     if (settings.autoDetection) {
       unawaited(detectionController.start());
     }
+
+    // Si el proceso murió con una emisión en curso, se reanuda sola. Ocurre en
+    // capas de fabricante agresivas pese al servicio en primer plano, y una
+    // baliza que se apaga en silencio porque el sistema recicló memoria es
+    // justo el fallo que esta app no se puede permitir.
+    // El orden importa: primero se comprueba si había una emisión interrumpida
+    // y sólo si no la había se atiende el atajo. Al revés, reanudar pisaría la
+    // orden recién dada por la persona.
+    unawaited(() async {
+      final resumed = await sosController.resumeIfInterrupted();
+      if (resumed) return;
+
+      final pending = await shortcuts.consumePending();
+      if (pending == ShortcutAction.startSos) {
+        await sosController.startSos();
+      }
+    }());
 
     return runtime;
   }

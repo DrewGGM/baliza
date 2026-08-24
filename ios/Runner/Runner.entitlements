@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  ALERTAS CRÍTICAS
+
+	  Permiten que el aviso "¿estás bien?" suene aunque el iPhone esté en
+	  silencio o en modo No Molestar. Sin esto, la pregunta que decide si se
+	  emite auxilio automáticamente puede pasar completamente desapercibida —
+	  y quien duerme con el teléfono en silencio es justo quien no va a
+	  responder a tiempo.
+
+	  IMPORTANTE: este entitlement NO se concede solo. Hay que solicitarlo a
+	  Apple en https://developer.apple.com/contact/request/notifications-critical-alerts
+	  justificando el caso de uso. Hasta que lo aprueben, la app compila y
+	  funciona igual, pero iOS ignora la petición de alerta crítica y el aviso
+	  respeta el modo silencioso.
+
+	  Se deja declarado para que la aprobación sea lo único que falte.
+	-->
+	<key>com.apple.developer.usernotifications.critical-alerts</key>
+	<true/>
+
+	<!--
+	  ACCESORIOS BLUETOOTH
+
+	  Requerido para emitir y escanear en segundo plano de forma sostenida.
+	-->
+	<key>com.apple.external-accessory.wireless-configuration</key>
+	<true/>
+</dict>
+</plist>

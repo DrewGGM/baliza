@@ -97,6 +97,21 @@ Si estás a salvo y quieres ayudar:
 <tr>
 <td colspan="2">
 
+### ⚡ Atajo sin desbloquear · 🔋 Ahorro que alarga la señal
+
+**Pedir ayuda** vive también en el panel de ajustes rápidos de Android: se
+despliega sin desbloquear, de un gesto, desde cualquier pantalla.
+
+Y conforme cae la batería, Baliza **retira señales por su cuenta** —empezando
+por la linterna, que es la que más consume y menos aporta bajo escombros— hasta
+quedarse sólo con la baliza de radio. Cada decisión se explica en pantalla; la
+radio no se apaga nunca.
+
+</td>
+</tr>
+<tr>
+<td colspan="2">
+
 ### 🌐 Detección automática de sismos
 
 Si la activas, Baliza vigila el acelerómetro, el giroscopio y el barómetro. Al
@@ -306,6 +321,49 @@ que nadie va a responder.
 </details>
 
 <details>
+<summary><b>La batería es un reloj de arena, y la app lo administra sola</b></summary>
+
+Bajo escombros todo lo que consume acorta el tiempo durante el cual alguien
+puede encontrarte. Y no todo consume igual:
+
+| Elemento | Consumo | Alcance útil |
+|---|---|---|
+| Linterna | Muy alto | Sólo con línea de vista |
+| Sirena | Medio | Decenas de metros, atraviesa escombros |
+| Baliza BLE | Muy bajo | 10–30 m, atraviesa paredes |
+
+Por eso se retiran en ese orden: linterna por debajo del 50 %, vibración y
+sirena continua por debajo del 25 %, y por debajo del 10 % **sólo queda la
+radio**, que es lo que menos cuesta y lo único que funciona sin ver a nadie.
+
+No es un ajuste. Alguien atrapado, con dolor y con miedo no está en condiciones
+de calcular cuánta batería le queda ni de razonar qué apagar. La app lo decide y
+**se lo dice**, que es distinto de hacerlo a escondidas.
+
+Los umbrales llevan histéresis: sin ella una batería que fluctúa entre 24 % y
+25 % encendería y apagaría la linterna cada pocos segundos, gastando más que
+dejarla fija.
+</details>
+
+<details>
+<summary><b>Si el sistema mata la app, la baliza vuelve sola — con el mismo código</b></summary>
+
+Pese al servicio en primer plano, las capas de fabricante agresivas (Xiaomi,
+Huawei, Samsung) matan procesos igual. Una baliza que se apaga en silencio
+porque Android recicló memoria es exactamente el fallo que esta app no se puede
+permitir.
+
+El estado de la emisión se guarda en disco y se reanuda al arrancar,
+conservando **el instante de inicio original** —para que el cronómetro y los
+minutos que viajan en la señal reflejen la espera real— y **el mismo
+identificador de baliza**.
+
+Lo segundo importa más de lo que parece: sin ello, un equipo de rescate que
+venía siguiendo esa señal la vería desaparecer y aparecer otra distinta justo
+mientras se acercaba.
+</details>
+
+<details>
 <summary><b>Un servicio en primer plano, no sólo una notificación</b></summary>
 
 Una notificación persistente **no** impide que Android mate la aplicación. Desde
@@ -357,7 +415,7 @@ flutter build ipa --release      # requiere macOS
 | Plataforma | Compila | Verificado |
 |---|---|---|
 | **Android** | ✅ APK generado | ✅ Ejecutado en emulador · ⏳ BLE pendiente de dos equipos físicos |
-| **iOS** | ⏳ Configurado, sin compilar | ⏳ Requiere macOS |
+| **iOS** | ⏳ Configurado, sin compilar | ⏳ Requiere macOS — ver [docs/IOS.md](docs/IOS.md) |
 
 > **Nota honesta sobre las pruebas.** La lógica de dominio está verificada de
 > forma exhaustiva. El transporte BLE real **no puede probarse en un emulador**,

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Baliza</string>
+
+    <!-- Atajo de ajustes rapidos. El texto es corto a la fuerza: el panel
+         recorta cualquier etiqueta larga y "Pedir ayuda" ya lo dice todo. -->
+    <string name="tile_sos_label">Pedir ayuda</string>
+    <string name="tile_sos_subtitle">Baliza SOS</string>
+</resources>

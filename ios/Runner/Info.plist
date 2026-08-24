@@ -107,5 +107,14 @@
 
 	<key>UIRequiresPersistentWiFi</key>
 	<false/>
+	<!-- Actividades en vivo: el equivalente iOS del servicio en primer plano
+	     de Android. Mantienen viva la sesion de radio en segundo plano y
+	     muestran el estado en la pantalla de bloqueo y en la Isla Dinamica.
+	     La clave se declara aqui; falta crear la extension de widget en
+	     Xcode (ver docs/IOS.md). -->
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
+	<true/>
 </dict>
 </plist>

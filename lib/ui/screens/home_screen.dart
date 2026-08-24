@@ -170,6 +170,14 @@ class _StateSummary extends StatelessWidget {
 
   final SosController sos;
 
+  /// Autonomía estimada en formato corto. Aproximada a propósito: dar
+  /// "4 h 12 min" sugeriría una precisión que no existe.
+  static String _formatLife(Duration? d) {
+    if (d == null) return '—';
+    if (d.inHours >= 1) return '~${d.inHours} h';
+    return '~${d.inMinutes} min';
+  }
+
   static String _formatElapsed(Duration d) {
     final h = d.inHours;
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
@@ -181,6 +189,44 @@ class _StateSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     final runtime = RuntimeScope.of(context);
     final settings = runtime.settings;
+
+    if (sos.isBroadcastingSafe) {
+      final left = sos.safeRemaining ?? Duration.zero;
+      return BalizaCard(
+        color: BalizaColors.safeSoft,
+        borderColor: BalizaColors.safe.withValues(alpha: 0.4),
+        child: Row(
+          children: <Widget>[
+            const Icon(Icons.verified_user, color: BalizaColors.safe, size: 30),
+            const SizedBox(width: Space.lg),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'Avisando que estás a salvo',
+                    style: BalizaText.bodyStrong.copyWith(
+                      color: BalizaColors.safe,
+                    ),
+                  ),
+                  const SizedBox(height: Space.xs),
+                  Text(
+                    'Quien te esté buscando puede descartarte de su lista. '
+                    'Quedan ${left.inMinutes}:'
+                    '${left.inSeconds.remainder(60).toString().padLeft(2, '0')}.',
+                    style: BalizaText.caption,
+                  ),
+                ],
+              ),
+            ),
+            TextButton(
+              onPressed: () => unawaited(sos.stopSafeBroadcast()),
+              child: const Text('Detener'),
+            ),
+          ],
+        ),
+      );
+    }
 
     if (!sos.isTransmitting) {
       return Column(
@@ -295,12 +341,12 @@ class _StateSummary extends StatelessWidget {
               ),
               Expanded(
                 child: DataPoint(
-                  label: 'Ficha',
-                  value: settings.profile.isPresent ? 'Enviada' : 'Vacía',
-                  icon: Icons.medical_information_outlined,
-                  valueColor: settings.profile.isPresent
-                      ? BalizaColors.safe
-                      : BalizaColors.warning,
+                  label: 'Autonomía',
+                  value: _formatLife(sos.estimatedLife),
+                  icon: Icons.hourglass_bottom,
+                  valueColor: (sos.estimatedLife?.inHours ?? 99) < 2
+                      ? BalizaColors.warning
+                      : null,
                 ),
               ),
             ],
@@ -311,6 +357,13 @@ class _StateSummary extends StatelessWidget {
               label: 'Activada automáticamente por sismo',
               color: BalizaColors.warning,
               icon: Icons.auto_awesome_motion,
+            ),
+          ],
+          if (sos.powerNotice != null) ...<Widget>[
+            const SizedBox(height: Space.lg),
+            InlineNotice(
+              message: sos.powerNotice!,
+              icon: Icons.battery_saver,
             ),
           ],
           if (sos.keepAliveFailed) ...<Widget>[

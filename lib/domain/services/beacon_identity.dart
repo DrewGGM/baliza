@@ -65,6 +65,22 @@ class BeaconIdentity {
   /// Es idempotente: llamarlo dos veces no altera el estado.
   void freeze() => _frozen = true;
 
+  /// Restaura un identificador previo y lo congela.
+  ///
+  /// Existe para un caso concreto: el sistema mató el proceso durante una
+  /// emergencia y la app vuelve a arrancar. Sin esto se sortearía un
+  /// identificador nuevo y **el equipo de rescate perdería la pista** de la
+  /// baliza que venía siguiendo, justo mientras se acercaba a ella.
+  ///
+  /// La continuidad durante la emergencia es la razón de ser del congelado;
+  /// que un reinicio la rompa vaciaría esa garantía de contenido.
+  void restore(int beaconId) {
+    if (beaconId == 0 || beaconId == 0xFFFFFFFF) return;
+    _current = beaconId;
+    _rotatedAt = clock.now();
+    _frozen = true;
+  }
+
   /// Reanuda la rotación al terminar la emergencia.
   ///
   /// Fuerza un identificador nuevo de inmediato: si se conservara el mismo que
