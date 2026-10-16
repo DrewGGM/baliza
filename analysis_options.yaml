@@ -56,5 +56,7 @@ linter:
     sort_child_properties_last: true
     throw_in_finally: true
     unawaited_futures: true
-    unnecessary_await_in_return: true
+    # unnecessary_await_in_return quedo obsoleta en Dart 3.13: tenerla activada
+    # es el unico hallazgo que --fatal-infos encuentra, y pondria el pipeline en
+    # rojo sin que haya nada mal en el codigo.
     use_super_parameters: true

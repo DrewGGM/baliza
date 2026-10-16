@@ -1,0 +1,199 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Pipeline DevOps de Baliza — GitHub Actions
+#
+# Disparo: push a master/main, pull_request hacia master/main, o manual.
+#
+# Pasos:
+#   1. Trigger automatico por push
+#   2. Provision de infraestructura (runner + JDK + SDK de Flutter)
+#   3. Checkout del codigo
+#   4. Resolucion de dependencias + analisis estatico + compilacion del APK
+#   5. Ejecucion de pruebas unitarias (antes de desplegar nada)
+#   6. Despliegue al ambiente de runtime (publicacion del APK instalable)
+#
+# La capa de dominio es Dart puro: no depende del radio Bluetooth, ni de los
+# sensores, ni de la interfaz. Por eso puede verificarse por completo en un
+# servidor sin telefono, que es justamente lo que hace este flujo de trabajo.
+#
+# El transporte BLE real no se prueba aqui y no puede hacerse: exige dos
+# dispositivos fisicos separados por una distancia controlada. Esa validacion
+# se realiza en campo y se documenta aparte.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Pipeline CI/CD
+
+# ── 1. TRIGGER ───────────────────────────────────────────────────────────────
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+
+# Si se empuja dos veces seguidas, cancela la ejecución anterior: interesa el
+# veredicto del último commit, no el de uno que ya quedó atrás.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# ── VARIABLES GLOBALES ───────────────────────────────────────────────────────
+env:
+  FLUTTER_VERSION: 3.47.1
+  JAVA_VERSION: "17"
+
+jobs:
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 1: BUILD & TEST — ninguna otra etapa corre si esta no queda en verde
+  # ──────────────────────────────────────────────────────────────────────────
+  build-and-test:
+    name: "Build & Test"
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # ── 3. CHECKOUT DEL CÓDIGO ───────────────────────────────────────────
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      # ── 2. INFRAESTRUCTURA: runtime del proyecto ─────────────────────────
+      - name: Configurar JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+
+      - name: Instalar Flutter ${{ env.FLUTTER_VERSION }}
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      # ── 4. RESOLUCIÓN DE DEPENDENCIAS ────────────────────────────────────
+      - name: Instalar dependencias
+        run: flutter pub get
+
+      - name: Análisis estático
+        # --fatal-infos porque analysis_options.yaml ya eleva a error lo que de
+        # verdad importa (código muerto, futuros sin await); dejar pasar los
+        # avisos restantes convertiría el análisis en ruido que nadie lee.
+        run: flutter analyze --fatal-infos
+
+      # ── 5. PRUEBAS UNITARIAS ─────────────────────────────────────────────
+      # Se ejecutan ANTES del despliegue: si una falla, el pipeline se corta y
+      # no se publica ningún APK.
+      - name: Ejecutar pruebas unitarias
+        run: flutter test --coverage --reporter expanded
+
+      - name: Guardar reporte de cobertura
+        # Se publica siempre, también cuando las pruebas fallan: es cuando más
+        # falta hace saber qué quedó sin cubrir.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cobertura-lcov
+          path: coverage/lcov.info
+          retention-days: 30
+          if-no-files-found: warn
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 2: EMPAQUETADO — el equivalente del "docker build" para una app móvil
+  # ──────────────────────────────────────────────────────────────────────────
+  empaquetado:
+    name: "Build APK"
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+
+    steps:
+
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+
+      - name: Instalar Flutter ${{ env.FLUTTER_VERSION }}
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Instalar dependencias
+        run: flutter pub get
+
+      # ── 4b. COMPILACIÓN ──────────────────────────────────────────────────
+      # --split-per-abi produce un APK por arquitectura: pesan la mitad que el
+      # universal, que en una app de emergencia importa (se instala por
+      # transferencia directa, muchas veces sin buena conexión).
+      - name: Compilar el APK de release
+        run: flutter build apk --release --split-per-abi
+
+      - name: Guardar el APK como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: baliza-apk
+          path: build/app/outputs/flutter-apk/*.apk
+          retention-days: 30
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # JOB 3: DESPLIEGUE AL RUNTIME
+  #
+  # El runtime de Baliza es el teléfono del usuario, no un servidor: no hay
+  # ambiente al que hacer `docker compose up`. El equivalente real del
+  # despliegue es publicar el APK instalable en un canal de distribución, que
+  # aquí es una Release de GitHub versionada por número de ejecución.
+  # ──────────────────────────────────────────────────────────────────────────
+  despliegue:
+    name: "Deploy a Runtime"
+    runs-on: ubuntu-latest
+    needs: empaquetado
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+
+    permissions:
+      contents: write
+
+    environment:
+      name: distribucion
+
+    steps:
+
+      - name: Descargar el APK compilado
+        uses: actions/download-artifact@v4
+        with:
+          name: baliza-apk
+          path: apk
+
+      # ── 6. DESPLIEGUE ────────────────────────────────────────────────────
+      - name: Publicar la Release con el APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Baliza build ${{ github.run_number }}
+          body: |
+            Compilación automática de la rama ${{ github.ref_name }}.
+
+            Commit: ${{ github.sha }}
+            Pruebas unitarias: aprobadas (ninguna release se publica en rojo).
+          files: apk/*.apk
+          prerelease: true
+
+      # ── NOTIFICACIÓN POST-DEPLOY ─────────────────────────────────────────
+      - name: Notificar resultado
+        if: always()
+        run: |
+          echo "Deploy ${{ job.status }} en ${{ github.ref_name }} @ ${GITHUB_SHA:0:7}"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECRETS REQUERIDOS
+#
+#   GITHUB_TOKEN — automático, no requiere configuración manual. Es el único
+#                  que este pipeline necesita: no publica en tiendas, no entra
+#                  a servidores por SSH y no usa registros de contenedores.
+# ─────────────────────────────────────────────────────────────────────────────
