@@ -76,6 +76,31 @@ class SosSignal {
   }
 
   @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is SosSignal &&
+        other.beaconId == beaconId &&
+        other.messageType == messageType &&
+        other.flags.length == flags.length &&
+        other.flags.containsAll(flags) &&
+        other.batteryPercent == batteryPercent &&
+        other.elapsedMinutes == elapsedMinutes &&
+        other.peopleCount == peopleCount &&
+        other.medicalProfile == medicalProfile;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    beaconId,
+    messageType,
+    Object.hashAllUnordered(flags),
+    batteryPercent,
+    elapsedMinutes,
+    peopleCount,
+    medicalProfile,
+  );
+
+  @override
   String toString() =>
       'SosSignal(#${beaconId.toRadixString(16).padLeft(8, '0')}, '
       '${messageType.name}, ${elapsedMinutes}min, ${peopleCount}p)';
