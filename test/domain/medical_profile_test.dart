@@ -52,4 +52,47 @@ void main() {
       expect(worstCase.severityScore, 100);
     });
   });
+
+  group('Conversión a códigos y reconstrucción', () {
+    test('una ficha reconstruida desde sus códigos es igual a la original', () {
+      const original = MedicalProfile(
+        bloodType: BloodType.abNegative,
+        ageBand: AgeBand.senior,
+        conditions: {MedicalCondition.cardiac},
+        allergies: {Allergy.latex},
+      );
+
+      final rebuilt = MedicalProfile(
+        bloodType: BloodType.fromCode(original.bloodType.code),
+        ageBand: AgeBand.fromCode(original.ageBand.code),
+        conditions: MedicalProfile.conditionsFromMask(original.conditionsMask),
+        allergies: MedicalProfile.allergiesFromMask(original.allergiesMask),
+      );
+
+      expect(rebuilt, original);
+    });
+
+    test('la ficha vacía y la ficha con todo marcado sobreviven el viaje', () {
+      final full = MedicalProfile(
+        conditions: MedicalCondition.values.toSet(),
+        allergies: Allergy.values.toSet(),
+      );
+
+      for (final profile in [MedicalProfile.empty, full]) {
+        expect(
+          MedicalProfile.conditionsFromMask(profile.conditionsMask),
+          profile.conditions,
+        );
+        expect(
+          MedicalProfile.allergiesFromMask(profile.allergiesMask),
+          profile.allergies,
+        );
+      }
+    });
+
+    test('un código fuera de catálogo queda sin definir en vez de fallar', () {
+      expect(BloodType.fromCode(15), BloodType.unknown);
+      expect(AgeBand.fromCode(15), AgeBand.unknown);
+    });
+  });
 }
