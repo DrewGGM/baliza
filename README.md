@@ -398,7 +398,7 @@ barridos hay silencio, que ahorra batería y deja oír a quien busca.
 # Requisitos: Flutter 3.47+
 flutter --version
 
-git clone https://github.com/<usuario>/baliza.git
+git clone https://github.com/DrewGGM/baliza.git
 cd baliza
 flutter pub get
 
@@ -409,6 +409,20 @@ flutter run
 flutter build apk --release
 flutter build ipa --release      # requiere macOS
 ```
+
+### Pruebas y pipeline
+
+```bash
+flutter test          # 113 pruebas unitarias → "+113: All tests passed!"
+```
+
+Cada push a `master` ejecuta en GitHub Actions el pipeline completo:
+pruebas, compilación del APK y publicación en una Release. Si una prueba
+falla, no se compila ni se publica nada.
+
+**[docs/GUIA-PIPELINE.md](docs/GUIA-PIPELINE.md)** explica cómo instalar el
+ambiente, qué parámetros tiene el pipeline, cómo ejecutarlo en una copia del
+repositorio o en el computador, y cómo hacer fallar una prueba para ver el corte.
 
 ### Estado de las plataformas
 
