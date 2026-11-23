@@ -33,7 +33,7 @@ void main() {
 
   group('CRC-16/CCITT-FALSE contra vectores conocidos', () {
     test('el vector canónico del estándar da 0x29B1', () {
-      expect(SosPayloadCodec.crc16('123456789'.codeUnits), 0x29B2);
+      expect(SosPayloadCodec.crc16('123456789'.codeUnits), 0x29B1);
     });
 
     test('la entrada vacía da el valor inicial 0xFFFF', () {
